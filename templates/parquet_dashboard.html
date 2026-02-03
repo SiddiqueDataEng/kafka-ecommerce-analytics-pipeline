@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parquet Storage Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #FF9800 0%, #FF5722 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 12px 24px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-tab:hover, .nav-tab.active {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+            text-align: center;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #FF5722;
+            margin-bottom: 5px;
+        }
+
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .chart-container h3 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .events-section {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .events-header {
+            padding: 20px;
+            background: linear-gradient(45deg, #FF9800, #FF5722);
+            color: white;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .events-controls {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary { background: #2196F3; color: white; }
+        .btn-success { background: #4CAF50; color: white; }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .events-list {
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .event-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s ease;
+        }
+
+        .event-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .event-item:last-child {
+            border-bottom: none;
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .event-id {
+            font-weight: bold;
+            color: #FF5722;
+            font-size: 0.9rem;
+        }
+
+        .event-time {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .event-type {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .event-type.page-view { background: #E3F2FD; color: #1976D2; }
+        .event-type.purchase { background: #E8F5E8; color: #388E3C; }
+        .event-type.search { background: #FFF3E0; color: #F57C00; }
+        .event-type.product-interaction { background: #F3E5F5; color: #7B1FA2; }
+        .event-type.user-engagement { background: #E0F2F1; color: #00695C; }
+
+        .event-details {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .no-events {
+            text-align: center;
+            color: #666;
+            padding: 40px 20px;
+            font-style: italic;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            font-size: 0.9rem;
+            z-index: 1000;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-online {
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+
+        .status-offline {
+            background: #f44336;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status" id="connectionStatus">
+        <span class="status-indicator status-offline" id="statusIndicator"></span>
+        <span id="statusText">Connecting...</span>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>📁 Parquet Storage Dashboard</h1>
+            <p>Columnar Storage Analytics & Monitoring</p>
+        </div>
+
+        <div class="nav-tabs">
+            <a href="/" class="nav-tab">🏠 Main</a>
+            <a href="/parquet" class="nav-tab active">📁 Parquet</a>
+            <a href="/duckdb" class="nav-tab">🦆 DuckDB</a>
+            <a href="/etl" class="nav-tab">🔄 ETL</a>
+            <a href="/snowflake" class="nav-tab">❄️ Snowflake</a>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Files</h3>
+                <div class="stat-value" id="totalFiles">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Records</h3>
+                <div class="stat-value" id="totalRecords">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Storage Size</h3>
+                <div class="stat-value" id="storageSize">0 MB</div>
+            </div>
+            <div class="stat-card">
+                <h3>Latest File</h3>
+                <div class="stat-value" id="latestFile" style="font-size: 1rem;">None</div>
+            </div>
+        </div>
+
+        <div class="charts-section">
+            <div class="chart-container">
+                <h3>📊 File Creation Timeline</h3>
+                <canvas id="fileChart" width="400" height="200"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>📈 Storage Growth</h3>
+                <canvas id="storageChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+
+        <div class="events-section">
+            <div class="events-header">
+                📁 Recent Parquet Events
+            </div>
+            <div class="events-controls">
+                <div>
+                    <button class="btn btn-primary" onclick="refreshEvents()">🔄 Refresh</button>
+                    <button class="btn btn-success" onclick="loadMoreEvents()">📥 Load More</button>
+                </div>
+                <div>
+                    <span>Showing: <strong id="eventCount">0</strong> events</span>
+                </div>
+            </div>
+            <div class="events-list" id="eventsList">
+                <div class="no-events">Loading events...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Socket.IO connection
+        const socket = io();
+        
+        // Chart variables
+        let fileChart, storageChart;
+        let fileData = [];
+        let storageData = [];
+        let timeLabels = [];
+
+        // Connection status
+        socket.on('connect', function() {
+            document.getElementById('statusIndicator').className = 'status-indicator status-online';
+            document.getElementById('statusText').textContent = 'Connected';
+            loadParquetData();
+        });
+
+        socket.on('disconnect', function() {
+            document.getElementById('statusIndicator').className = 'status-indicator status-offline';
+            document.getElementById('statusText').textContent = 'Disconnected';
+        });
+
+        // Initialize charts
+        function initCharts() {
+            // File creation timeline
+            const ctx1 = document.getElementById('fileChart').getContext('2d');
+            fileChart = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Files Created',
+                        data: [],
+                        borderColor: '#FF5722',
+                        backgroundColor: 'rgba(255, 87, 34, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+
+            // Storage growth chart
+            const ctx2 = document.getElementById('storageChart').getContext('2d');
+            storageChart = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Storage Size (MB)',
+                        data: [],
+                        backgroundColor: 'rgba(255, 152, 0, 0.8)',
+                        borderColor: '#FF9800',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // Load Parquet data
+        function loadParquetData() {
+            fetch('/api/parquet_stats')
+                .then(response => response.json())
+                .then(data => {
+                    updateStats(data);
+                    updateCharts();
+                })
+                .catch(error => console.error('Error loading Parquet stats:', error));
+            
+            loadParquetEvents();
+        }
+
+        // Update statistics
+        function updateStats(stats) {
+            document.getElementById('totalFiles').textContent = stats.file_count || 0;
+            document.getElementById('totalRecords').textContent = stats.total_records || 0;
+            document.getElementById('storageSize').textContent = (stats.total_size_mb || 0) + ' MB';
+            document.getElementById('latestFile').textContent = stats.latest_file || 'None';
+        }
+
+        // Update charts
+        function updateCharts() {
+            const now = new Date().toLocaleTimeString();
+            
+            if (timeLabels.length >= 20) {
+                timeLabels.shift();
+                fileData.shift();
+                storageData.shift();
+            }
+
+            timeLabels.push(now);
+            
+            const fileCount = parseInt(document.getElementById('totalFiles').textContent);
+            const storageSize = parseFloat(document.getElementById('storageSize').textContent);
+            
+            fileData.push(fileCount);
+            storageData.push(storageSize);
+            
+            fileChart.data.labels = timeLabels;
+            fileChart.data.datasets[0].data = [...fileData];
+            fileChart.update();
+            
+            storageChart.data.labels = timeLabels;
+            storageChart.data.datasets[0].data = [...storageData];
+            storageChart.update();
+        }
+
+        // Load Parquet events
+        function loadParquetEvents(limit = 50) {
+            fetch(`/api/parquet_events?limit=${limit}`)
+                .then(response => response.json())
+                .then(events => {
+                    displayEvents(events);
+                })
+                .catch(error => console.error('Error loading Parquet events:', error));
+        }
+
+        // Display events
+        function displayEvents(events) {
+            const eventsList = document.getElementById('eventsList');
+            document.getElementById('eventCount').textContent = events.length;
+            
+            if (events.length === 0) {
+                eventsList.innerHTML = '<div class="no-events">No Parquet events found</div>';
+                return;
+            }
+            
+            eventsList.innerHTML = '';
+            
+            events.forEach(event => {
+                const eventItem = document.createElement('div');
+                eventItem.className = 'event-item';
+                
+                const eventType = event.event_type || 'unknown';
+                const eventTypeClass = eventType.toLowerCase().replace('_', '-');
+                
+                eventItem.innerHTML = `
+                    <div class="event-header">
+                        <div class="event-id">${event.event_id || 'N/A'}</div>
+                        <div class="event-time">${event.ingestion_time || event.timestamp || 'N/A'}</div>
+                    </div>
+                    <div class="event-type ${eventTypeClass}">${eventType}</div>
+                    <div class="event-details">${JSON.stringify(event, null, 2)}</div>
+                `;
+                
+                eventsList.appendChild(eventItem);
+            });
+        }
+
+        // Socket event handlers
+        socket.on('storage_event', function(data) {
+            if (data.type === 'parquet') {
+                // Reload stats when new Parquet events arrive
+                setTimeout(() => {
+                    fetch('/api/parquet_stats')
+                        .then(response => response.json())
+                        .then(stats => {
+                            updateStats(stats);
+                            updateCharts();
+                        });
+                }, 1000);
+            }
+        });
+
+        socket.on('storage_update', function(data) {
+            if (data.storage_stats && data.storage_stats.parquet) {
+                updateStats(data.storage_stats.parquet);
+                updateCharts();
+            }
+        });
+
+        // Control functions
+        function refreshEvents() {
+            loadParquetData();
+        }
+
+        function loadMoreEvents() {
+            loadParquetEvents(100);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            loadParquetData();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                loadParquetData();
+            }, 30000);
+        });
+    </script>
+</body>
+</html>
